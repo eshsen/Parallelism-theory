@@ -6,7 +6,7 @@
 
 float:
 ```
-cmake -S . -B build ИЛИ cmake -S . -B buid -DUSE_DOUBLE=OFF
+cmake -S . -B build ИЛИ cmake -S . -B build -DUSE_DOUBLE=OFF
 ```
 double:  
 ```
@@ -16,3 +16,4 @@ cmake -S . -B build -DUSE_DOUBLE=ON
 Ожидаемый вывод - 0.0
 - Вывод с float - Sum: 0.094364
 - Вывод с double - Sum: 4.89582e-11
+

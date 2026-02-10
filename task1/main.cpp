@@ -8,15 +8,17 @@
     using num_t = float;
 #endif
 
+#define N 10000000
+#define PI 3.1415926535
+
 int main() {
-    const size_t N = 10000000;
-    std::vector<num_t> arr(N);
+    std::vector<num_t> arr;
     num_t sum = 0;
 
     for (size_t i = 0; i < N; ++i) {
-        num_t x = (2 * M_PI * i) / N;
-        arr[i] = std::sin(x);
-        sum += arr[i];
+        num_t x = (num_t)sin((2 * PI * i) / N);
+        arr.push_back(x);
+        sum += x;
     }
 
     std::cout << "Sum: " << sum << std::endl;

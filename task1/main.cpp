@@ -14,7 +14,7 @@ int main() {
     num_t sum = 0;
 
     for (size_t i = 0; i < N; ++i) {
-        num_t x = (2 * M_PI * i) / N;;
+        num_t x = (2 * M_PI * i) / N;
         arr[i] = std::sin(x);
         sum += arr[i];
     }

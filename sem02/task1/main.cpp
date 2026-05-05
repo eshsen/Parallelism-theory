@@ -1,89 +1,74 @@
-#include <iostream>
+#include <fstream>
 #include <vector>
 #include <chrono>
-#include <cstdlib>
 #include <omp.h>
-#include <iomanip> 
 
-double timeChrono()
-{
-    const auto now = std::chrono::steady_clock::now();
-    const std::chrono::duration<double> seconds = now.time_since_epoch();
-    return seconds.count();
-}
-
-void init_arrays_omp(std::vector<double> &A,
-                     std::vector<double> &b,
-                     int M, int N)
-{
-#pragma omp parallel for schedule(guided, 100)
-    for (int i = 0; i < M; ++i) {
-        b[i] = 1.0;
-        const int base = i * N;
-        for (int j = 0; j < N; ++j) {
-            A[base + j] = static_cast<double>((i + j) % 100) / 100.0;
+void multiply_matrix_vector(
+    const std::vector<double>& matrix,
+    const std::vector<double>& input_vector,
+    std::vector<double>& result_vector,
+    int rows, int cols
+) {
+    #pragma omp parallel for
+    for (int row_index = 0; row_index < rows; ++row_index) {
+        const double* current_row = &matrix[row_index * cols];
+        double current_sum = 0.0;
+        for (int col_index = 0; col_index < cols; ++col_index) {
+            current_sum += current_row[col_index] * input_vector[col_index];
         }
+        result_vector[row_index] = current_sum;
     }
 }
 
-void matvec_omp(const std::vector<double> &A,
-                const std::vector<double> &b,
-                std::vector<double> &c,
-                int M, int N)
-{
-#pragma omp parallel for schedule(guided, 100)
-    for (int i = 0; i < M; ++i) {
-        double sum = 0.0;
-        const int base = i * N;
-        for (int j = 0; j < N; ++j) {
-            sum += A[base + j] * b[j];
+double run_experiment(int rows, int cols) {
+    std::vector<double> matrix(rows * cols);
+    std::vector<double> input_vector(cols);
+    std::vector<double> result_vector(rows);
+
+    #pragma omp parallel for
+    for (int row_index = 0; row_index < rows; ++row_index) {
+        double* current_row = &matrix[row_index * cols];
+        for (int col_index = 0; col_index < cols; ++col_index) {
+            current_row[col_index] = row_index + col_index;
         }
-        c[i] = sum;
+        result_vector[row_index] = 0.0;
     }
+
+    for (int col_index = 0; col_index < cols; ++col_index) {
+        input_vector[col_index] = col_index;
+    }
+
+    const auto time_begin = std::chrono::steady_clock::now();
+
+    multiply_matrix_vector(matrix, input_vector, result_vector, rows, cols);
+
+    const auto time_end = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> elapsed_time = time_end - time_begin;
+
+    return elapsed_time.count();
 }
 
-int main(int argc, char **argv)
-{
-    int N = 20000;
-    if (argc >= 2) {
-        N = std::atoi(argv[1]);
-        if (N <= 0) {
-            std::cerr << "Bad size, using 20000\n";
-            N = 20000;
-        }
-    }
-    int M = N;
+int main() {
+    const int repeat_count = 100;
+    std::vector<int> thread_options{1, 2, 4, 7, 8, 16, 20, 40};
+    std::vector<int> matrix_sizes{20000, 40000};
 
-    std::cout << "Matrix size: " << M << " x " << N << '\n';
+    std::ofstream output_file("dgemv_time.csv");
+    output_file << "data_size,threads,time" << std::endl;
 
-    std::vector<double> A(static_cast<size_t>(M) * static_cast<size_t>(N));
-    std::vector<double> b(static_cast<size_t>(N));
-    std::vector<double> c(static_cast<size_t>(M));
+    for (int matrix_size : matrix_sizes) {
+        for (int thread_count : thread_options) {
+            omp_set_num_threads(thread_count);
 
-#pragma omp parallel
-    {
-#pragma omp single
-        {
-            int nt = omp_get_num_threads();
-            std::cout << "OpenMP threads: " << nt << '\n';
+            for (int launch_index = 0; launch_index < repeat_count; ++launch_index) {
+                double execution_time = run_experiment(matrix_size, matrix_size);
+                output_file << matrix_size << ", "
+                            << thread_count << ", "
+                            << execution_time << std::endl;
+            }
         }
     }
 
-    double t0_init = timeChrono();
-    init_arrays_omp(A, b, M, N);
-    double t1_init = timeChrono();
-    std::cout << "Init time: " << std::fixed << std::setprecision(2) << (t1_init - t0_init) << " s\n";
-
-    double t0 = timeChrono();
-    matvec_omp(A, b, c, M, N);
-    double t1 = timeChrono();
-    std::cout << "Matvec time: " << std::fixed << std::setprecision(2) << (t1 - t0) << " s\n";
-
-    double checksum = 0.0;
-    for (int i = 0; i < M; ++i) {
-        checksum += c[i];
-    }
-    std::cout << "Checksum: " << checksum << '\n';
-
+    output_file.close();
     return 0;
 }

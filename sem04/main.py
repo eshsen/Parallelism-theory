@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 import cv2
 import numpy as np
 
-# ───────────────────────── логирование ──────────────────────────
+# логирование
 os.makedirs("log", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -28,16 +28,17 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-# ───────────────────────── базовый датчик ───────────────────────
+# базовый датчик
 class Sensor(ABC):
     @abstractmethod
     def get(self):
         raise NotImplementedError("Subclasses must implement method get()")
 
 
-# ───────────────────────── SensorX (НЕ МЕНЯТЬ!) ─────────────────
+# SensorX
 class SensorX(Sensor):
     """Sensor X"""
+
     def __init__(self, delay: float):
         self._delay = delay
         self._data = 0
@@ -48,7 +49,7 @@ class SensorX(Sensor):
         return self._data
 
 
-# ───────────────────────── SensorCam (RAII) ─────────────────────
+# SensorCam (RAII)
 class SensorCam(Sensor):
     """USB-камера. RAII: инициализация в __init__, освобождение в __del__."""
 
@@ -70,7 +71,7 @@ class SensorCam(Sensor):
         except ValueError:
             cam_index = camera_id
 
-        self._cap = cv2.VideoCapture(cam_index)
+        self._cap = cv2.VideoCapture(cam_index, cv2.CAP_DSHOW)
 
         if not self._cap.isOpened():
             self._logger.error("Камера %s не найдена в системе", camera_id)
@@ -78,13 +79,15 @@ class SensorCam(Sensor):
 
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-        self._logger.info("Камера %s открыта, разрешение %dx%d", camera_id, w, h)
+        self._logger.info(
+            "Камера %s открыта, разрешение %dx%d", camera_id, w, h)
 
     def get(self):
         """Возвращает очередной кадр или None при ошибке."""
         ret, frame = self._cap.read()
         if not ret:
-            self._logger.error("Ошибка чтения кадра (камера %s)", self._camera_id)
+            self._logger.error(
+                "Ошибка чтения кадра (камера %s)", self._camera_id)
             return None
         return frame
 
@@ -96,7 +99,7 @@ class SensorCam(Sensor):
             )
 
 
-# ───────────────────────── WindowImage (RAII) ───────────────────
+# WindowImage (RAII)
 class WindowImage:
     """Окно отображения. RAII: создание в __init__, уничтожение в __del__."""
 
@@ -127,7 +130,7 @@ class WindowImage:
             pass
 
 
-# ─────────────── воркеры для потоков ────────────────────────────
+# воркеры для потоков
 def sensor_thread_worker(sensor: Sensor, q: queue.Queue, stop_event: threading.Event):
     """Бесконечно опрашивает датчик и кладёт значение в очередь размера 1."""
     while not stop_event.is_set():
@@ -165,7 +168,7 @@ def cam_thread_worker(sensor: SensorCam, q: queue.Queue, stop_event: threading.E
                 pass
 
 
-# ─────────────── воркеры для процессов ──────────────────────────
+# воркеры для процессов
 def sensor_process_worker(delay: float, mp_q: multiprocessing.Queue, stop_event):
     """Процессный воркер для SensorX."""
     sensor = SensorX(delay)
@@ -200,7 +203,7 @@ def cam_process_worker(camera_id: str, resolution: str, mp_q: multiprocessing.Qu
         mp_q.put(frame)
 
 
-# ─────────────── наложение данных датчиков на кадр ──────────────
+# наложение данных датчиков на кадр
 def overlay_sensors(frame: np.ndarray, sx_values: list) -> np.ndarray:
     img = frame.copy()
     h, w = img.shape[:2]
@@ -222,7 +225,7 @@ def overlay_sensors(frame: np.ndarray, sx_values: list) -> np.ndarray:
     return img
 
 
-# ─────────────── режим ПОТОКОВ ──────────────────────────────────
+# режим ПОТОКОВ
 def run_threads(camera_id: str, resolution: str, fps: float):
     logger.info("=== Режим: ПОТОКИ ===")
     stop_event = threading.Event()
@@ -235,10 +238,12 @@ def run_threads(camera_id: str, resolution: str, fps: float):
 
     # запуск потоков
     threads = []
-    t = threading.Thread(target=cam_thread_worker, args=(cam, cam_q, stop_event), daemon=True)
+    t = threading.Thread(target=cam_thread_worker, args=(
+        cam, cam_q, stop_event), daemon=True)
     threads.append(t)
     for i, s in enumerate(sensors):
-        t = threading.Thread(target=sensor_thread_worker, args=(s, sx_qs[i], stop_event), daemon=True)
+        t = threading.Thread(target=sensor_thread_worker, args=(
+            s, sx_qs[i], stop_event), daemon=True)
         threads.append(t)
     for t in threads:
         t.start()
@@ -275,7 +280,7 @@ def run_threads(camera_id: str, resolution: str, fps: float):
         logger.info("Все потоки остановлены")
 
 
-# ─────────────── режим ПРОЦЕССОВ ────────────────────────────────
+# режим ПРОЦЕССОВ
 def run_processes(camera_id: str, resolution: str, fps: float):
     logger.info("=== Режим: ПРОЦЕССЫ ===")
     stop_event = multiprocessing.Event()
@@ -286,12 +291,14 @@ def run_processes(camera_id: str, resolution: str, fps: float):
 
     processes = []
     p = multiprocessing.Process(
-        target=cam_process_worker, args=(camera_id, resolution, cam_q, stop_event), daemon=True
+        target=cam_process_worker, args=(
+            camera_id, resolution, cam_q, stop_event), daemon=True
     )
     processes.append(p)
     for i, d in enumerate(delays):
         p = multiprocessing.Process(
-            target=sensor_process_worker, args=(d, sx_qs[i], stop_event), daemon=True
+            target=sensor_process_worker, args=(
+                d, sx_qs[i], stop_event), daemon=True
         )
         processes.append(p)
     for p in processes:
@@ -327,7 +334,7 @@ def run_processes(camera_id: str, resolution: str, fps: float):
         logger.info("Все процессы остановлены")
 
 
-# ─────────────── argparse + точка входа ─────────────────────────
+# argparse + точка входа
 def parse_args():
     parser = argparse.ArgumentParser(description="Sensor Dashboard")
     parser.add_argument(

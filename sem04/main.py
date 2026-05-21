@@ -1,44 +1,32 @@
-"""
-Задание 1: Формирование управляющего сигнала
-Запуск: python main.py --camera /dev/video0 --resolution 1280x720 --fps 30 --mode thread
-         python main.py --camera /dev/video0 --resolution 1280x720 --fps 30 --mode process
-"""
-import argparse
+from queue import Queue, Empty
 import logging
-import os
-import time
+import argparse
 import threading
-import multiprocessing
-import queue
-from abc import ABC, abstractmethod
-
+import time
 import cv2
-import numpy as np
+import os
 
-# логирование
+os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
+os.environ["OPENCV_VIDEOIO_PRIORITY_FFMPEG"] = "0"
+os.environ["OPENCV_VIDEOIO_DEBUG"] = "0"
+
+
+# Настройка логирования
 os.makedirs("log", exist_ok=True)
+
 logging.basicConfig(
+    filename="log/app.log",
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler("log/app.log", encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
+    format="%(asctime)s [%(levelname)s] %(message)s"
 )
-logger = logging.getLogger("main")
 
 
-# базовый датчик
-class Sensor(ABC):
-    @abstractmethod
+class Sensor:
     def get(self):
-        raise NotImplementedError("Subclasses must implement method get()")
+        raise NotImplementedError()
 
 
-# SensorX
 class SensorX(Sensor):
-    """Sensor X"""
-
     def __init__(self, delay: float):
         self._delay = delay
         self._data = 0
@@ -49,320 +37,211 @@ class SensorX(Sensor):
         return self._data
 
 
-# SensorCam (RAII)
-class SensorCam(Sensor):
-    """USB-камера. RAII: инициализация в __init__, освобождение в __del__."""
+class SensorCam:
+    def __init__(self, cam_name: int, resolution: tuple):
+        self.cam_name = cam_name
+        self.width, self.height = resolution
+        self.cap = None
 
-    def __init__(self, camera_id: str, resolution: str):
-        self._logger = logging.getLogger("SensorCam")
-        self._camera_id = camera_id
-        self._resolution = resolution
-
-        # разбираем разрешение
         try:
-            w, h = map(int, resolution.split("x"))
-        except ValueError:
-            self._logger.error("Неверный формат разрешения: %s", resolution)
+            self.cap = cv2.VideoCapture(cam_name)
+
+            if not self.cap.isOpened():
+                raise RuntimeError(f"Camera {cam_name} not found")
+
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+
+            logging.info(f"Camera initialized: {cam_name}")
+
+        except Exception as e:
+            logging.error(f"Camera init error: {e}")
             raise
 
-        # числовой индекс или путь к устройству
-        try:
-            cam_index = int(camera_id)
-        except ValueError:
-            cam_index = camera_id
-
-        self._cap = cv2.VideoCapture(cam_index, cv2.CAP_DSHOW)
-
-        if not self._cap.isOpened():
-            self._logger.error("Камера %s не найдена в системе", camera_id)
-            raise RuntimeError(f"Камера {camera_id} не найдена")
-
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-        self._logger.info(
-            "Камера %s открыта, разрешение %dx%d", camera_id, w, h)
-
     def get(self):
-        """Возвращает очередной кадр или None при ошибке."""
-        ret, frame = self._cap.read()
+        if not self.cap:
+            return None
+
+        ret, frame = self.cap.read()
         if not ret:
-            self._logger.error(
-                "Ошибка чтения кадра (камера %s)", self._camera_id)
+            logging.error("Camera read error")
             return None
         return frame
 
     def __del__(self):
-        if hasattr(self, "_cap") and self._cap is not None:
-            self._cap.release()
-            logging.getLogger("SensorCam").info(
-                "Камера %s освобождена", self._camera_id
-            )
-
-
-# WindowImage (RAII)
-class WindowImage:
-    """Окно отображения. RAII: создание в __init__, уничтожение в __del__."""
-
-    WIN_NAME = "Sensor Dashboard"
-
-    def __init__(self, fps: float):
-        self._logger = logging.getLogger("WindowImage")
-        self._fps = fps
-        self._delay_ms = max(1, int(1000 / fps))
-
         try:
-            cv2.namedWindow(self.WIN_NAME, cv2.WINDOW_NORMAL)
-            self._logger.info("Окно создано, FPS=%s", fps)
-        except Exception as exc:
-            self._logger.error("Ошибка создания окна: %s", exc)
-            raise
+            if self.cap:
+                self.cap.release()
+                logging.info("Camera released")
+        except Exception as e:
+            logging.error(f"Camera release error: {e}")
 
-    def show(self, img: np.ndarray) -> int:
-        """Показать img. Возвращает код нажатой клавиши."""
-        cv2.imshow(self.WIN_NAME, img)
-        return cv2.waitKey(self._delay_ms)
+
+class WindowImage:
+    def __init__(self, freq_hz: float):
+        self.delay = 1.0 / freq_hz
+        self.window_name = "Sensor System"
+
+        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        logging.info("Window initialized")
+
+    def show(self, img):
+        try:
+            cv2.imshow(self.window_name, img)
+            cv2.waitKey(1)
+            time.sleep(self.delay)
+        except Exception as e:
+            logging.error(f"Window show error: {e}")
 
     def __del__(self):
         try:
-            cv2.destroyWindow(self.WIN_NAME)
-            logging.getLogger("WindowImage").info("Окно уничтожено")
-        except Exception:
-            pass
+            cv2.destroyAllWindows()
+            logging.info("Window destroyed")
+        except Exception as e:
+            logging.error(f"Window destroy error: {e}")
 
 
-# воркеры для потоков
-def sensor_thread_worker(sensor: Sensor, q: queue.Queue, stop_event: threading.Event):
-    """Бесконечно опрашивает датчик и кладёт значение в очередь размера 1."""
-    while not stop_event.is_set():
-        value = sensor.get()
-        # очередь размером 1 — всегда самое свежее значение
-        if not q.full():
-            q.put_nowait(value)
-        else:
-            try:
-                q.get_nowait()
-            except queue.Empty:
-                pass
-            try:
-                q.put_nowait(value)
-            except queue.Full:
-                pass
-
-
-def cam_thread_worker(sensor: SensorCam, q: queue.Queue, stop_event: threading.Event):
-    """Воркер камеры: кладёт кадры в очередь размера 1."""
-    while not stop_event.is_set():
-        frame = sensor.get()
-        if frame is None:
-            continue
-        if not q.full():
-            q.put_nowait(frame)
-        else:
-            try:
-                q.get_nowait()
-            except queue.Empty:
-                pass
-            try:
-                q.put_nowait(frame)
-            except queue.Full:
-                pass
-
-
-# воркеры для процессов
-def sensor_process_worker(delay: float, mp_q: multiprocessing.Queue, stop_event):
-    """Процессный воркер для SensorX."""
-    sensor = SensorX(delay)
-    while not stop_event.is_set():
-        value = sensor.get()
-        # обнуляем очередь, кладём только последнее
-        while not mp_q.empty():
-            try:
-                mp_q.get_nowait()
-            except Exception:
-                break
-        mp_q.put(value)
-
-
-def cam_process_worker(camera_id: str, resolution: str, mp_q: multiprocessing.Queue, stop_event):
-    """Процессный воркер для камеры."""
-    log = logging.getLogger("cam_process")
+def sensor_worker(sensor, queue: Queue, stop_event: threading.Event):
     try:
-        cam = SensorCam(camera_id, resolution)
-    except Exception as exc:
-        log.error("Процесс камеры: ошибка инициализации: %s", exc)
-        return
-    while not stop_event.is_set():
-        frame = cam.get()
-        if frame is None:
-            continue
-        while not mp_q.empty():
-            try:
-                mp_q.get_nowait()
-            except Exception:
+        while not stop_event.is_set():
+            data = sensor.get()
+
+            if queue.full():
+                try:
+                    queue.get_nowait()
+                except Empty:
+                    pass
+
+            queue.put(data)
+
+    except Exception as e:
+        logging.error(f"Sensor worker error: {e}")
+        stop_event.set()
+
+
+def camera_worker(cam: SensorCam, queue: Queue, stop_event: threading.Event):
+    try:
+        while not stop_event.is_set():
+            frame = cam.get()
+
+            if frame is None:
+                stop_event.set()
+                print("Camera read error")
                 break
-        mp_q.put(frame)
+
+            if queue.full():
+                try:
+                    queue.get_nowait()
+                except Empty:
+                    pass
+
+            queue.put(frame)
+
+    except Exception as e:
+        logging.error(f"Camera worker error: {e}")
+        print("There was a problem with the camera")
+        stop_event.set()
 
 
-# наложение данных датчиков на кадр
-def overlay_sensors(frame: np.ndarray, sx_values: list) -> np.ndarray:
-    img = frame.copy()
-    h, w = img.shape[:2]
-    overlay = img.copy()
-    cv2.rectangle(overlay, (w - 200, h - 90), (w - 5, h - 5), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.5, img, 0.5, 0, img)
-    labels = ["Sensor0", "Sensor1", "Sensor2"]
-    for i, val in enumerate(sx_values):
-        cv2.putText(
-            img,
-            f"{labels[i]}: {val}",
-            (w - 190, h - 70 + i * 25),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 255),
-            1,
-            cv2.LINE_AA,
-        )
-    return img
+def main():
+    parser = argparse.ArgumentParser()
 
+    parser.add_argument("--cam", type=str, default="0", help="Camera name")
+    parser.add_argument("--res", type=str,
+                        default="640x480", help="Resolution WxH")
+    parser.add_argument("--fps", type=float, default=30,
+                        help="Display frequency")
 
-# режим ПОТОКОВ
-def run_threads(camera_id: str, resolution: str, fps: float):
-    logger.info("=== Режим: ПОТОКИ ===")
+    args = parser.parse_args()
+
+    w, h = map(int, args.res.split("x"))
+
     stop_event = threading.Event()
 
-    cam = SensorCam(camera_id, resolution)
-    sensors = [SensorX(0.01), SensorX(0.1), SensorX(1.0)]
+    cam_queue = Queue(maxsize=1)
+    s1_queue = Queue(maxsize=1)
+    s2_queue = Queue(maxsize=1)
+    s3_queue = Queue(maxsize=1)
 
-    cam_q = queue.Queue(maxsize=1)
-    sx_qs = [queue.Queue(maxsize=1) for _ in sensors]
+    try:
+        cam = SensorCam(int(args.cam), (w, h))
+    except RuntimeError:
+        print("Camera not found")
+        return
 
-    # запуск потоков
-    threads = []
-    t = threading.Thread(target=cam_thread_worker, args=(
-        cam, cam_q, stop_event), daemon=True)
-    threads.append(t)
-    for i, s in enumerate(sensors):
-        t = threading.Thread(target=sensor_thread_worker, args=(
-            s, sx_qs[i], stop_event), daemon=True)
-        threads.append(t)
+    s1 = SensorX(0.01)
+    s2 = SensorX(0.1)
+    s3 = SensorX(1.0)
+
+    window = WindowImage(args.fps)
+
+    threads = [
+        threading.Thread(target=camera_worker, args=(
+            cam, cam_queue, stop_event)),
+        threading.Thread(target=sensor_worker,
+                         args=(s1, s1_queue, stop_event)),
+        threading.Thread(target=sensor_worker,
+                         args=(s2, s2_queue, stop_event)),
+        threading.Thread(target=sensor_worker,
+                         args=(s3, s3_queue, stop_event)),
+    ]
+
     for t in threads:
         t.start()
 
-    window = WindowImage(fps)
-    blank = np.zeros((480, 640, 3), dtype=np.uint8)
-    last_frame = blank
-    last_sx = [0, 0, 0]
-
     try:
-        while True:
-            # получаем кадр
+        last_s1 = last_s2 = last_s3 = 0
+
+        while not stop_event.is_set():
             try:
-                last_frame = cam_q.get_nowait()
-            except queue.Empty:
+                frame = cam_queue.get(timeout=1)
+            except Empty:
+                continue
+
+            try:
+                last_s1 = s1_queue.get_nowait()
+            except Empty:
                 pass
 
-            # получаем значения датчиков
-            for i, q_ in enumerate(sx_qs):
-                try:
-                    last_sx[i] = q_.get_nowait()
-                except queue.Empty:
-                    pass
+            try:
+                last_s2 = s2_queue.get_nowait()
+            except Empty:
+                pass
 
-            img = overlay_sensors(last_frame, last_sx)
-            key = window.show(img)
-            if key == ord("q"):
-                logger.info("Нажата 'q', завершение...")
+            try:
+                last_s3 = s3_queue.get_nowait()
+            except Empty:
+                pass
+
+            cv2.putText(frame, f"S1 (100Hz): {last_s1}", (20, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+            cv2.putText(frame, f"S2 (10Hz): {last_s2}", (20, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+
+            cv2.putText(frame, f"S3 (1Hz): {last_s3}", (20, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+            window.show(frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                stop_event.set()
                 break
+
+    except KeyboardInterrupt:
+        stop_event.set()
+
     finally:
         stop_event.set()
+
         for t in threads:
             t.join(timeout=2)
-        logger.info("Все потоки остановлены")
 
+        del cam
+        del window
 
-# режим ПРОЦЕССОВ
-def run_processes(camera_id: str, resolution: str, fps: float):
-    logger.info("=== Режим: ПРОЦЕССЫ ===")
-    stop_event = multiprocessing.Event()
-
-    cam_q = multiprocessing.Queue(maxsize=2)
-    sx_qs = [multiprocessing.Queue(maxsize=2) for _ in range(3)]
-    delays = [0.01, 0.1, 1.0]
-
-    processes = []
-    p = multiprocessing.Process(
-        target=cam_process_worker, args=(
-            camera_id, resolution, cam_q, stop_event), daemon=True
-    )
-    processes.append(p)
-    for i, d in enumerate(delays):
-        p = multiprocessing.Process(
-            target=sensor_process_worker, args=(
-                d, sx_qs[i], stop_event), daemon=True
-        )
-        processes.append(p)
-    for p in processes:
-        p.start()
-
-    window = WindowImage(fps)
-    blank = np.zeros((480, 640, 3), dtype=np.uint8)
-    last_frame = blank
-    last_sx = [0, 0, 0]
-
-    try:
-        while True:
-            try:
-                last_frame = cam_q.get_nowait()
-            except Exception:
-                pass
-
-            for i, q_ in enumerate(sx_qs):
-                try:
-                    last_sx[i] = q_.get_nowait()
-                except Exception:
-                    pass
-
-            img = overlay_sensors(last_frame, last_sx)
-            key = window.show(img)
-            if key == ord("q"):
-                logger.info("Нажата 'q', завершение...")
-                break
-    finally:
-        stop_event.set()
-        for p in processes:
-            p.join(timeout=2)
-        logger.info("Все процессы остановлены")
-
-
-# argparse + точка входа
-def parse_args():
-    parser = argparse.ArgumentParser(description="Sensor Dashboard")
-    parser.add_argument(
-        "--camera", default="0",
-        help="Имя/индекс камеры (напр. /dev/video0 или 0)"
-    )
-    parser.add_argument(
-        "--resolution", default="640x480",
-        help="Разрешение камеры, напр. 1280x720"
-    )
-    parser.add_argument(
-        "--fps", type=float, default=30.0,
-        help="Частота отображения картинки (FPS)"
-    )
-    parser.add_argument(
-        "--mode", choices=["thread", "process"], default="thread",
-        help="thread — потоки (по заданию), process — процессы (эксперимент)"
-    )
-    return parser.parse_args()
+        logging.info("Program stopped safely")
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    logger.info(
-        "Запуск: camera=%s, resolution=%s, fps=%s, mode=%s",
-        args.camera, args.resolution, args.fps, args.mode,
-    )
-    if args.mode == "thread":
-        run_threads(args.camera, args.resolution, args.fps)
-    else:
-        run_processes(args.camera, args.resolution, args.fps)
+    main()

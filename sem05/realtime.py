@@ -31,8 +31,8 @@ class CameraCapture:
             raise RuntimeError(f"Cannot open camera {camera_id}")
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  width)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        self.fps    = self._cap.get(cv2.CAP_PROP_FPS) or 30.0
-        self.width  = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.fps = self._cap.get(cv2.CAP_PROP_FPS) or 30.0
+        self.width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     def read(self):
@@ -66,13 +66,14 @@ class VideoWriter:
 def worker_fn(in_q: queue.Queue, out_q: queue.Queue):
     """Worker: owns its own YOLO model instance (thread-safe per Ultralytics docs)."""
     model = YOLO("yolov8s-pose.pt")
+    model.to("cpu")
     while True:
         item = in_q.get()
         if item is None:
             out_q.put(None)
             break
         idx, frame = item
-        results = model(frame, verbose=False)
+        results = model(frame, verbose=False, device="cpu")
         annotated = results[0].plot()
         out_q.put((idx, annotated))
 
@@ -93,9 +94,9 @@ def main():
                         help="Optional: save output to this video file")
     args = parser.parse_args()
 
-    cam    = CameraCapture(args.camera)
+    cam = CameraCapture(args.camera)
     writer = VideoWriter(args.output, cam.fps, cam.width, cam.height) \
-             if args.output else None
+        if args.output else None
 
     # Queues: small buffers to reduce latency
     in_q:  queue.Queue = queue.Queue(maxsize=args.workers * 2)
@@ -111,12 +112,12 @@ def main():
     # FPS counter
     fps_display = 0.0
     fps_counter = 0
-    fps_t0      = time.perf_counter()
+    fps_t0 = time.perf_counter()
 
     # Latest processed frame (for display when output is behind input)
     latest_frame: np.ndarray | None = None
-    frame_idx   = 0
-    stop_event  = threading.Event()
+    frame_idx = 0
+    stop_event = threading.Event()
 
     def producer():
         nonlocal frame_idx
@@ -165,7 +166,7 @@ def main():
         if now - fps_t0 >= 1.0:
             fps_display = fps_counter / (now - fps_t0)
             fps_counter = 0
-            fps_t0      = now
+            fps_t0 = now
 
         # Draw FPS
         cv2.putText(annotated, f"FPS: {fps_display:.1f}", (10, 30),

@@ -26,8 +26,8 @@ class VideoReader:
         self._cap = cv2.VideoCapture(path)
         if not self._cap.isOpened():
             raise RuntimeError(f"Cannot open video: {path}")
-        self.fps    = self._cap.get(cv2.CAP_PROP_FPS)
-        self.width  = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.fps = self._cap.get(cv2.CAP_PROP_FPS)
+        self.width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.frame_count = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -62,7 +62,7 @@ class VideoWriter:
 
 def run_inference(model: YOLO, frame: np.ndarray) -> np.ndarray:
     """Run YOLOv8s-pose on a single BGR frame and return annotated frame."""
-    results = model(frame, verbose=False)
+    results = model(frame, verbose=False, device="cpu")
     return results[0].plot()
 
 
@@ -73,7 +73,8 @@ def run_inference(model: YOLO, frame: np.ndarray) -> np.ndarray:
 def process_single(video_path: str, output_path: str) -> float:
     reader = VideoReader(video_path)
     writer = VideoWriter(output_path, reader.fps, reader.width, reader.height)
-    model  = YOLO("yolov8s-pose.pt")
+    model = YOLO("yolov8s-pose.pt")
+    model.to("cpu")
 
     t_start = time.perf_counter()
 
@@ -100,6 +101,7 @@ _POISON = None   # sentinel value to stop workers
 def worker_fn(in_q: queue.Queue, out_q: queue.Queue):
     """Worker thread: each thread owns its own YOLO instance (thread-safe)."""
     model = YOLO("yolov8s-pose.pt")
+    model.to("cpu")
     while True:
         item = in_q.get()
         if item is _POISON:

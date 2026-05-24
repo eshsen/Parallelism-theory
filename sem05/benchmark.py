@@ -27,9 +27,9 @@ class VideoReader:
         self._cap = cv2.VideoCapture(path)
         if not self._cap.isOpened():
             raise RuntimeError(f"Cannot open video: {path}")
-        self.fps         = self._cap.get(cv2.CAP_PROP_FPS)
-        self.width       = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.height      = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.fps = self._cap.get(cv2.CAP_PROP_FPS)
+        self.width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.frame_count = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     def read(self):
@@ -60,26 +60,27 @@ class VideoWriter:
 def process_single(video_path: str, out_path: str) -> float:
     reader = VideoReader(video_path)
     writer = VideoWriter(out_path, reader.fps, reader.width, reader.height)
-    model  = YOLO("yolov8s-pose.pt")
+    model = YOLO("yolov8s-pose.pt")
     t0 = time.perf_counter()
     while True:
         ok, frame = reader.read()
         if not ok:
             break
-        results = model(frame, verbose=False)
+        results = model(frame, verbose=False, device="cpu")
         writer.write(results[0].plot())
     return time.perf_counter() - t0
 
 
 def _worker(in_q, out_q):
     model = YOLO("yolov8s-pose.pt")
+    model.to("cpu")
     while True:
         item = in_q.get()
         if item is None:
             out_q.put(None)
             break
         idx, frame = item
-        results = model(frame, verbose=False)
+        results = model(frame, verbose=False, device="cpu")
         out_q.put((idx, results[0].plot()))
 
 
@@ -167,7 +168,7 @@ def main():
             tmp = f.name
         tn = process_multi(args.video_path, tmp, n)
         os.unlink(tmp)
-        speedup    = t1 / tn
+        speedup = t1 / tn
         efficiency = speedup / n
         print(f"{tn:.2f} s  speedup={speedup:.2f}  eff={efficiency:.2f}")
         results.append({"workers": n, "time_s": tn,
@@ -175,7 +176,8 @@ def main():
 
     # Save CSV
     with open(args.output_csv, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["workers","time_s","speedup","efficiency"])
+        writer = csv.DictWriter(
+            f, fieldnames=["workers", "time_s", "speedup", "efficiency"])
         writer.writeheader()
         writer.writerows(results)
 

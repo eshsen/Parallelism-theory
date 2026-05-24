@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -59,6 +60,24 @@ double expected_value(int func_id, const std::vector<double>& args) {
     return std::numeric_limits<double>::quiet_NaN();
 }
 
+std::string func_name(int func_id) {
+    if (func_id == 1) return "sin";
+    if (func_id == 2) return "sqrt";
+    if (func_id == 3) return "pow";
+    return "unknown";
+}
+
+void print_args(const std::vector<double>& args) {
+    std::cout << "(";
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        if (i > 0) {
+            std::cout << ", ";
+        }
+        std::cout << args[i];
+    }
+    std::cout << ")";
+}
+
 void check_file(const std::string& filename) {
     auto records = read_records(filename);
 
@@ -66,17 +85,26 @@ void check_file(const std::string& filename) {
     std::cout << "Checking: " << filename << "\n";
     std::cout << "Total records: " << records.size() << "\n";
 
-    for (const auto& rec : records) {
+    for (std::size_t i = 0; i < records.size(); ++i) {
+        const auto& rec = records[i];
         double expected = expected_value(rec.func_id, rec.args);
 
         double local_eps = 1e-4;
-        if (rec.func_id == 3) {         
-            local_eps = 1e-2;            
+        if (rec.func_id == 3) {
+            local_eps = 1e-2;
         }
 
         double diff = std::abs(expected - rec.result);
         if (std::isnan(expected) || diff > local_eps) {
             ++wrong;
+            std::cout << "Error in test #" << (i + 1)
+                      << " (task_id=" << rec.task_id << ", func=" << func_name(rec.func_id) << ")\n";
+            std::cout << "  args      = ";
+            print_args(rec.args);
+            std::cout << "\n";
+            std::cout << "  expected  = " << std::setprecision(15) << expected << "\n";
+            std::cout << "  got       = " << std::setprecision(15) << rec.result << "\n";
+            std::cout << "  diff      = " << std::setprecision(15) << diff << "\n\n";
         }
     }
 

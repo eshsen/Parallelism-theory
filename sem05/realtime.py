@@ -1,8 +1,7 @@
-import argparse
 import cv2
 import time
 import threading
-from queue import Queue, Empty, Full
+from queue import Queue
 from ultralytics import YOLO
 
 
@@ -22,12 +21,12 @@ class CameraRAII:
 
     def _reader(self):
         while self.running:
-            ret, frame = self.cap.read()
+            ret, frame = self.cap.read()  # захват кадра с камеры
             if not ret:
                 break
-            if not self.frame_queue.empty():
-                self.frame_queue.get_nowait()
-            self.frame_queue.put_nowait(frame)
+            if not self.frame_queue.empty():  # если в очереди есть старый кадр
+                self.frame_queue.get_nowait()  # удаляем его
+            self.frame_queue.put_nowait(frame)  # кладем свежий в очередь
 
     def get_frame(self):
         return self.frame_queue.get() if not self.frame_queue.empty() else None

@@ -102,6 +102,7 @@ class WindowImage:
 
 
 def sensor_worker(sensor, queue: Queue, stop_event: threading.Event):
+    """Запускается в отдельном потоке, бесконечно получает данные от датчика и кладет их в очередь"""
     try:
         while not stop_event.is_set():
             data = sensor.get()
@@ -120,6 +121,7 @@ def sensor_worker(sensor, queue: Queue, stop_event: threading.Event):
 
 
 def camera_worker(cam: SensorCam, queue: Queue, stop_event: threading.Event):
+    """Запускается в отдельном потоке, захватывает кадры с камеры и кладет их в очередь"""
     try:
         while not stop_event.is_set():
             frame = cam.get()

@@ -16,7 +16,7 @@ from ultralytics import YOLO
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RAII wrappers
+# RAII wrappers - ообертки для автоматического управления ресурсами
 # ──────────────────────────────────────────────────────────────────────────────
 
 class VideoReader:
@@ -61,7 +61,7 @@ class VideoWriter:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def run_inference(model: YOLO, frame: np.ndarray) -> np.ndarray:
-    """Run YOLOv8s-pose on a single BGR frame and return annotated frame."""
+    """Запускает YOLOv8-pose на одном кадре, возвращает кадр с нарисованными скелетами"""
     results = model(frame, verbose=False, device="cpu")
     return results[0].plot()
 
@@ -99,13 +99,13 @@ _POISON = None   # sentinel value to stop workers
 
 
 def worker_fn(in_q: queue.Queue, out_q: queue.Queue):
-    """Worker thread: each thread owns its own YOLO instance (thread-safe)."""
+    """Рабочий поток: берет кадр из входной очереди, обрабатывает, кладет результат в выходную очередь. У каждого worker'а своя копия модели"""
     model = YOLO("yolov8s-pose.pt")
     model.to("cpu")
     while True:
         item = in_q.get()
         if item is _POISON:
-            out_q.put(_POISON)   # propagate sentinel
+            out_q.put(_POISON)   # распространять сигнал
             in_q.task_done()
             break
         idx, frame = item

@@ -130,7 +130,7 @@ def process_multi(video_path: str, output_path: str, num_workers: int) -> float:
 
     t_start = time.perf_counter()
 
-    # Producer thread: read all frames into in_q
+    # Поток производителя: читает все кадры из видео во входную очередь
     def producer():
         frame_idx = 0
         while True:
@@ -146,7 +146,7 @@ def process_multi(video_path: str, output_path: str, num_workers: int) -> float:
     prod = threading.Thread(target=producer, daemon=True)
     prod.start()
 
-    # Consumer: collect results and restore order
+    # Consumer: собирает результаты и восстанавливает порядок
     pending: dict[int, np.ndarray] = {}
     next_to_write = 0
     finished_workers = 0
@@ -159,12 +159,12 @@ def process_multi(video_path: str, output_path: str, num_workers: int) -> float:
         idx, frame = item
         pending[idx] = frame
 
-        # Write all consecutive frames we have
+        # Записывает все последловательные кадры, которые у нас есть
         while next_to_write in pending:
             writer.write(pending.pop(next_to_write))
             next_to_write += 1
 
-    # Flush any remaining frames (should be empty after proper sync)
+    # Сбрасывает все оставшиеся кадры (должно быть пусто после правильной синхронизации)
     while next_to_write in pending:
         writer.write(pending.pop(next_to_write))
         next_to_write += 1

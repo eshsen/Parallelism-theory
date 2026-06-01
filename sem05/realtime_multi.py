@@ -107,10 +107,10 @@ def worker_process(
     worker_id: int,
     input_queue: Queue,
     output_queue: Queue,
-    stop_event: Event,
+    stop_event: Event,  # type: ignore
     imgsz: int,
-    infer_fps: Value,
-    worker_ready: Event,
+    infer_fps: Value,  # type: ignore
+    worker_ready: Event,  # type: ignore
 ) -> None:
     os.environ.setdefault("OMP_NUM_THREADS", "1")
 
@@ -293,10 +293,33 @@ def main() -> int:
             proc.join(timeout=5)
             if proc.is_alive():
                 proc.terminate()
+                proc.join(timeout=1)
+                if proc.is_alive():
+                    proc.kill()
+                    proc.join(timeout=0.5)
+
+        while not input_queue.empty():
+            try:
+                input_queue.get_nowait()
+            except:
+                break
+
+        while not output_queue.empty():
+            try:
+                output_queue.get_nowait()
+            except:
+                break
+
+        for proc in workers:
+            if proc.is_alive():
+                proc.close()
 
         window.close()
         camera.release()
         print("Done")
+
+        mp.active_children()
+        os._exit(0)
 
     return 0
 

@@ -1,63 +1,34 @@
 cmake_minimum_required(VERSION 3.18)
+project(heat2d CXX)
 
-set(CMAKE_CXX_COMPILER "/opt/nvidia/hpc_sdk/Linux_x86_64/23.11/compilers/bin/pgc++" CACHE STRING "PGC++ compiler" FORCE)
+# ожидается pgc++/nvc++ (NVHPC)
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "PGI|NVHPC")
+  message(WARNING "This project is designed for pgc++/nvc++ (NVHPC). Current compiler: ${CMAKE_CXX_COMPILER_ID}")
+endif()
 
-project(p_6th LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 14)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(ACC_FLAGS  -acc -Minfo=all -fast)
+set(BOOST_LIB  boost_program_options)
 
-option(ENABLE_OPENACC "Enable OpenACC flags for NVHPC/PGI compilers" ON)
-
-find_package(Boost REQUIRED COMPONENTS program_options)
-
-
-function(link_common target)
-  target_link_libraries(${target} PRIVATE Boost::program_options)
-  target_compile_options(${target} PRIVATE -O3)
+function(add_heat_target TGT SRC ACC_MODE)
+  add_executable(${TGT} ${SRC})
+  target_compile_options(${TGT} PRIVATE ${ACC_FLAGS} -acc=${ACC_MODE})
+  target_link_options(   ${TGT} PRIVATE ${ACC_FLAGS} -acc=${ACC_MODE})
+  target_link_libraries( ${TGT} PRIVATE ${BOOST_LIB})
+  foreach(DEF IN LISTS ARGN)
+    target_compile_definitions(${TGT} PRIVATE ${DEF})
+  endforeach()
 endfunction()
 
-function(add_openacc_flags target mode)
-  if(NOT ENABLE_OPENACC)
-    return()
-  endif()
+# CPU: оба из heat_all.cpp
+add_heat_target(cpu_onecore   heat_all.cpp host)
+add_heat_target(cpu_multicore heat_all.cpp multicore)
 
-  if(mode STREQUAL "host")
-    set(_acc_flag -acc=host)
-  elseif(mode STREQUAL "multicore")
-    set(_acc_flag -acc=multicore)
-  elseif(mode STREQUAL "gpu")
-    set(_acc_flag -acc=gpu)
-  else()
-    message(FATAL_ERROR "Unknown OpenACC mode: ${mode}")
-  endif()
+# базовый GPU из heat_all.cpp
+add_heat_target(gpu_base heat_all.cpp gpu)
 
-  target_compile_options(${target} PRIVATE ${_acc_flag} -Minfo=accel)
-  target_link_options(${target} PRIVATE ${_acc_flag})
-endfunction()
-
-add_executable(cpu_onecore eq.cpp)
-link_common(cpu_onecore)
-add_openacc_flags(cpu_onecore host)
-
-add_executable(cpu_multicore eq.cpp)
-link_common(cpu_multicore)
-add_openacc_flags(cpu_multicore multicore)
-target_compile_definitions(cpu_multicore PRIVATE ACC_MULTICORE_DEFAULTS=2)
-
-add_executable(gpu_base eq.cpp)
-link_common(gpu_base)
-add_openacc_flags(gpu_base gpu)
-
-add_executable(gpu1 gpu1.cpp)
-link_common(gpu1)
-add_openacc_flags(gpu1 gpu)
-
-add_executable(gpu2 gpu2.cpp)
-link_common(gpu2)
-add_openacc_flags(gpu2 gpu)
-
-add_executable(gpu3 gpu3.cpp)
-link_common(gpu3)
-add_openacc_flags(gpu3 gpu)
+# отдельные GPU-файлы
+add_heat_target(gpu_1 gpu_1.cpp gpu)
+add_heat_target(gpu_2 gpu_2.cpp gpu)
+add_heat_target(gpu_3 gpu_3.cpp gpu VEC_LEN=128)

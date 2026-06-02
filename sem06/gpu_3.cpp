@@ -175,6 +175,7 @@ int main(int argc, char** argv) {
             cur_a = !cur_a; // переключаем активный буффер
         }
 
+        // синхронизация и проверка ошибки (какая сетка тек)
         #pragma acc wait(1)
         error = 0.0;
 

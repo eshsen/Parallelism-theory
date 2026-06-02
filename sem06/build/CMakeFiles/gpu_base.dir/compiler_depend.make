@@ -1583,7 +1583,8 @@ CMakeFiles/gpu_base.dir/heat_all.cpp.o: ../heat_all.cpp \
   /opt/nvidia/hpc_sdk/Linux_x86_64/23.11/compilers/include/bits/c++config.h \
   /usr/include/c++/11/bits/quoted_string.h \
   /usr/include/c++/11/iostream \
-  /opt/nvidia/hpc_sdk/Linux_x86_64/23.11/compilers/include/bits/c++config.h
+  /opt/nvidia/hpc_sdk/Linux_x86_64/23.11/compilers/include/bits/c++config.h \
+  /opt/nvidia/hpc_sdk/Linux_x86_64/23.11/compilers/include/memory
 
 
 /usr/include/c++/11/bits/quoted_string.h:

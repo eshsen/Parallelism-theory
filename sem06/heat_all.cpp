@@ -6,23 +6,24 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <string>
 
 namespace po = boost::program_options;
 
-// ─────────── константы ───────────
 static constexpr double kCornerBL = 10.0;
 static constexpr double kCornerBR = 20.0;
 static constexpr double kCornerTR = 30.0;
 static constexpr double kCornerTL = 20.0;
 static constexpr int    kMaxIterations = 1'100'000;
 
-// ─────────── утилиты ───────────
+// индексация 2D -> 1D
 inline std::size_t idx(int j, int i, int m) noexcept {
     return static_cast<std::size_t>(j) * static_cast<std::size_t>(m)
          + static_cast<std::size_t>(i);
 }
 
+// граничные условия
 void set_boundary(double* grid, int m, int n) {
     if (m <= 0 || n <= 0) return;
 
@@ -49,6 +50,7 @@ void set_boundary(double* grid, int m, int n) {
     }
 }
 
+// обнуление + границы - версия для сырых указателей (работает с .get())
 void initialize(double* a, double* b, int m, int n) {
     const std::size_t count =
         static_cast<std::size_t>(m) * static_cast<std::size_t>(n);
@@ -73,7 +75,6 @@ inline double wtime() {
     return duration<double>(steady_clock::now().time_since_epoch()).count();
 }
 
-// ─────────── параметры ───────────
 struct Params {
     int    size     = 128;
     double tol      = 1.0e-6;
@@ -125,59 +126,62 @@ void setup_cores(int cores) {
     setenv("OMP_PLACES",      "cores",   0);
 }
 
-// ─────────── main ───────────
 int main(int argc, char** argv) {
     Params p = parse_args(argc, argv);
     const int m = p.size, n = p.size;
-    const std::size_t count =
-        static_cast<std::size_t>(m) * static_cast<std::size_t>(n);
+    const std::size_t count = m * n;
 
-    setup_cores(p.cores); // для cpu_multicore при -acc=multicore
+    setup_cores(p.cores);
 
-    double* buf_a = new double[count];
-    double* buf_b = new double[count];
-    initialize(buf_a, buf_b, m, n);
+    // Используем умные указатели - НЕТ delete[]
+    std::unique_ptr<double[]> buf_a = std::make_unique<double[]>(count);
+    std::unique_ptr<double[]> buf_b = std::make_unique<double[]>(count);
+    
+    // Передаём сырые указатели через .get()
+    initialize(buf_a.get(), buf_b.get(), m, n);
 
     double error = 1.0;
-    int    iter  = 0;
+    int iter = 0;
 
     const double t0 = wtime();
 
-    // одна и та же схема для host / multicore / gpu
-    #pragma acc data copy(buf_a[0:count]) create(buf_b[0:count])
+    // Получаем сырые указатели для OpenACC
+    double* raw_a = buf_a.get();
+    double* raw_b = buf_b.get();
+
+    // ИСПРАВЛЕННАЯ СЕКЦИЯ ДЛЯ GPU
+    #pragma acc data copyin(raw_a[0:count]) create(raw_b[0:count])
     {
         for (iter = 0; iter < p.max_iter; ++iter) {
             error = 0.0;
 
             // A -> B + вычисление ошибки
-            #pragma acc parallel loop collapse(2) \
-                    present(buf_a[0:count], buf_b[0:count]) reduction(max:error)
+            #pragma acc parallel loop collapse(2) reduction(max:error)
             for (int j = 1; j < n - 1; ++j) {
                 for (int i = 1; i < m - 1; ++i) {
                     const std::size_t id = idx(j, i, m);
-                    const double v = 0.25 * (buf_a[idx(j, i+1, m)] +
-                                             buf_a[idx(j, i-1, m)] +
-                                             buf_a[idx(j-1, i, m)] +
-                                             buf_a[idx(j+1, i, m)]);
-                    buf_b[id] = v;
-                    double diff = std::fabs(v - buf_a[id]);
+                    const double v = 0.25 * (raw_a[idx(j, i+1, m)] +
+                                             raw_a[idx(j, i-1, m)] +
+                                             raw_a[idx(j-1, i, m)] +
+                                             raw_a[idx(j+1, i, m)]);
+                    raw_b[id] = v;
+                    double diff = std::fabs(v - raw_a[id]);
                     if (diff > error) error = diff;
                 }
             }
 
             // B -> A копированием
-            #pragma acc parallel loop collapse(2) \
-                    present(buf_a[0:count], buf_b[0:count])
+            #pragma acc parallel loop collapse(2)
             for (int j = 1; j < n - 1; ++j) {
                 for (int i = 1; i < m - 1; ++i) {
                     const std::size_t id = idx(j, i, m);
-                    buf_a[id] = buf_b[id];
+                    raw_a[id] = raw_b[id];
                 }
             }
 
             if (error <= p.tol) { ++iter; break; }
         }
-    } // buf_a вернулся на host
+    }
 
     double t1 = wtime();
 
@@ -186,9 +190,8 @@ int main(int argc, char** argv) {
               << "iterations: " << iter      << "\n"
               << "error:      " << std::scientific << error << "\n";
 
-    if (p.size == 10 || p.size == 13) print_grid(buf_a, m, n);
+    if (p.size == 10 || p.size == 13) print_grid(raw_a, m, n);
 
-    delete[] buf_a;
-    delete[] buf_b;
+    // НЕТ delete[] - память освободится автоматически
     return 0;
 }

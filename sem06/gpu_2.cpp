@@ -5,6 +5,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <string>
 
 namespace po = boost::program_options;
@@ -47,13 +48,17 @@ void set_boundary(double* grid, int m, int n) {
     }
 }
 
-void initialize(double* a, double* b, int m, int n) {
+void initialize(std::unique_ptr<double[]>& a, std::unique_ptr<double[]>& b, int m, int n) {
     const std::size_t count =
         static_cast<std::size_t>(m) * static_cast<std::size_t>(n);
-    std::memset(a, 0, count * sizeof(double));
-    std::memset(b, 0, count * sizeof(double));
-    set_boundary(a, m, n);
-    set_boundary(b, m, n);
+    
+    a = std::make_unique<double[]>(count);
+    b = std::make_unique<double[]>(count);
+    
+    std::memset(a.get(), 0, count * sizeof(double));
+    std::memset(b.get(), 0, count * sizeof(double));
+    set_boundary(a.get(), m, n);
+    set_boundary(b.get(), m, n);
 }
 
 void print_grid(const double* grid, int m, int n) {
@@ -118,8 +123,8 @@ int main(int argc, char** argv) {
     const std::size_t count =
         static_cast<std::size_t>(m) * static_cast<std::size_t>(n);
 
-    double* buf_a = new double[count];
-    double* buf_b = new double[count];
+    std::unique_ptr<double[]> buf_a;
+    std::unique_ptr<double[]> buf_b;
     initialize(buf_a, buf_b, m, n);
 
     double error = 1.0;
@@ -128,33 +133,36 @@ int main(int argc, char** argv) {
 
     const double t0 = wtime();
 
-    #pragma acc enter data copyin(buf_a[0:count], buf_b[0:count])
+    double* raw_a = buf_a.get();
+    double* raw_b = buf_b.get();
+
+    #pragma acc enter data copyin(raw_a[0:count], raw_b[0:count])
 
     while (iter < p.max_iter && error > p.tol) {
         // асинхронный пакет шагов
         for (int s = 0; s < p.check && iter < p.max_iter; ++s, ++iter) {
             if (cur_a) {
                 #pragma acc parallel loop collapse(2) async(1) \
-                        present(buf_a[0:count], buf_b[0:count])
+                        present(raw_a[0:count], raw_b[0:count])
                 for (int j = 1; j < n - 1; ++j) {
                     for (int i = 1; i < m - 1; ++i) {
                         const std::size_t id = idx(j, i, m);
-                        buf_b[id] = 0.25 * (buf_a[idx(j, i+1, m)] +
-                                            buf_a[idx(j, i-1, m)] +
-                                            buf_a[idx(j-1, i, m)] +
-                                            buf_a[idx(j+1, i, m)]);
+                        raw_b[id] = 0.25 * (raw_a[idx(j, i+1, m)] +
+                                            raw_a[idx(j, i-1, m)] +
+                                            raw_a[idx(j-1, i, m)] +
+                                            raw_a[idx(j+1, i, m)]);
                     }
                 }
             } else {
                 #pragma acc parallel loop collapse(2) async(1) \
-                        present(buf_a[0:count], buf_b[0:count])
+                        present(raw_a[0:count], raw_b[0:count])
                 for (int j = 1; j < n - 1; ++j) {
                     for (int i = 1; i < m - 1; ++i) {
                         const std::size_t id = idx(j, i, m);
-                        buf_a[id] = 0.25 * (buf_b[idx(j, i+1, m)] +
-                                            buf_b[idx(j, i-1, m)] +
-                                            buf_b[idx(j-1, i, m)] +
-                                            buf_b[idx(j+1, i, m)]);
+                        raw_a[id] = 0.25 * (raw_b[idx(j, i+1, m)] +
+                                            raw_b[idx(j, i-1, m)] +
+                                            raw_b[idx(j-1, i, m)] +
+                                            raw_b[idx(j+1, i, m)]);
                     }
                 }
             }
@@ -167,28 +175,28 @@ int main(int argc, char** argv) {
 
         if (cur_a) {
             #pragma acc parallel loop collapse(2) \
-                    present(buf_a[0:count], buf_b[0:count]) reduction(max:error)
+                    present(raw_a[0:count], raw_b[0:count]) reduction(max:error)
             for (int j = 1; j < n - 1; ++j) {
                 for (int i = 1; i < m - 1; ++i) {
                     const std::size_t id = idx(j, i, m);
-                    double diff = std::fabs(buf_a[id] - buf_b[id]);
+                    double diff = std::fabs(raw_a[id] - raw_b[id]);
                     if (diff > error) error = diff;
                 }
             }
         } else {
             #pragma acc parallel loop collapse(2) \
-                    present(buf_a[0:count], buf_b[0:count]) reduction(max:error)
+                    present(raw_a[0:count], raw_b[0:count]) reduction(max:error)
             for (int j = 1; j < n - 1; ++j) {
                 for (int i = 1; i < m - 1; ++i) {
                     const std::size_t id = idx(j, i, m);
-                    double diff = std::fabs(buf_b[id] - buf_a[id]);
+                    double diff = std::fabs(raw_b[id] - raw_a[id]);
                     if (diff > error) error = diff;
                 }
             }
         }
     }
 
-    double* solution = cur_a ? buf_a : buf_b;
+    double* solution = cur_a ? raw_a : raw_b;
 
     if (p.size == 10 || p.size == 13) {
         #pragma acc update host(solution[0:count])
@@ -197,14 +205,12 @@ int main(int argc, char** argv) {
         #pragma acc update host(solution[0:count])
     }
 
-    #pragma acc exit data delete(buf_a[0:count], buf_b[0:count])
+    #pragma acc exit data delete(raw_a[0:count], raw_b[0:count])
 
     std::cout << std::fixed << std::setprecision(6)
             << "time:       " << (wtime() - t0) << " s\n"
             << "iterations: " << iter      << "\n"
             << "error:      " << std::scientific << error << "\n";
 
-    delete[] buf_a;
-    delete[] buf_b;
     return 0;
 }

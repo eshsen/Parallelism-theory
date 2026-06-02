@@ -21,11 +21,13 @@ static constexpr int    kDefaultCheckEvery = 10000;
 #define VEC_LEN 128
 #endif
 
+// индексация 2D -> 1D
 inline std::size_t idx(int j, int i, int m) noexcept {
     return static_cast<std::size_t>(j) * static_cast<std::size_t>(m)
          + static_cast<std::size_t>(i);
 }
 
+// граничные условия
 void set_boundary(double* grid, int m, int n) {
     if (m <= 0 || n <= 0) return;
 
@@ -170,7 +172,7 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-            cur_a = !cur_a;
+            cur_a = !cur_a; // переключаем активный буффер
         }
 
         #pragma acc wait(1)

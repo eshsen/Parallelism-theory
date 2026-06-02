@@ -50,7 +50,7 @@ void set_boundary(double* grid, int m, int n) {
     }
 }
 
-// обнуление + границы - версия для сырых указателей (работает с .get())
+// обнуление + границы (тек сетка, буфер для нового шага)
 void initialize(double* a, double* b, int m, int n) {
     const std::size_t count =
         static_cast<std::size_t>(m) * static_cast<std::size_t>(n);
@@ -133,7 +133,6 @@ int main(int argc, char** argv) {
 
     setup_cores(p.cores);
 
-    // Используем умные указатели - НЕТ delete[]
     std::unique_ptr<double[]> buf_a = std::make_unique<double[]>(count);
     std::unique_ptr<double[]> buf_b = std::make_unique<double[]>(count);
     
@@ -145,11 +144,10 @@ int main(int argc, char** argv) {
 
     const double t0 = wtime();
 
-    // Получаем сырые указатели для OpenACC
+    // Получаем сырые указатели 
     double* raw_a = buf_a.get();
     double* raw_b = buf_b.get();
 
-    // ИСПРАВЛЕННАЯ СЕКЦИЯ ДЛЯ GPU
     #pragma acc data copyin(raw_a[0:count]) create(raw_b[0:count])
     {
         for (iter = 0; iter < p.max_iter; ++iter) {
@@ -192,6 +190,5 @@ int main(int argc, char** argv) {
 
     if (p.size == 10 || p.size == 13) print_grid(raw_a, m, n);
 
-    // НЕТ delete[] - память освободится автоматически
     return 0;
 }

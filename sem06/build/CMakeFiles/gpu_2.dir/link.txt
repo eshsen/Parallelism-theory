@@ -1,0 +1,1 @@
+/opt/nvidia/hpc_sdk/Linux_x86_64/23.11/compilers/bin/pgc++ -acc -Minfo=all -fast -acc=gpu CMakeFiles/gpu_2.dir/gpu_2.cpp.o -o gpu_2  -lboost_program_options 

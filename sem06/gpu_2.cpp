@@ -13,7 +13,7 @@ static constexpr double kCornerBL = 10.0;
 static constexpr double kCornerBR = 20.0;
 static constexpr double kCornerTR = 30.0;
 static constexpr double kCornerTL = 20.0;
-static constexpr int    kMaxIterations     = 1'100'000;
+static constexpr int    kMaxIterations     = 1'000'000;
 static constexpr int    kDefaultCheckEvery = 10000;
 
 inline std::size_t idx(int j, int i, int m) noexcept {

@@ -1,0 +1,1 @@
+/opt/nvidia/hpc_sdk/Linux_x86_64/23.11/compilers/bin/pgc++ -acc -Minfo=all -fast -acc=multicore CMakeFiles/cpu_multicore.dir/heat_all.cpp.o -o cpu_multicore  -lboost_program_options 

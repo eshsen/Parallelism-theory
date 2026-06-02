@@ -1,0 +1,8 @@
+/home/a.smirnova/Parallelism-theory/Parallelism-theory/sem06/build/CMakeFiles/cpu_onecore.dir
+/home/a.smirnova/Parallelism-theory/Parallelism-theory/sem06/build/CMakeFiles/cpu_multicore.dir
+/home/a.smirnova/Parallelism-theory/Parallelism-theory/sem06/build/CMakeFiles/gpu_base.dir
+/home/a.smirnova/Parallelism-theory/Parallelism-theory/sem06/build/CMakeFiles/gpu_1.dir
+/home/a.smirnova/Parallelism-theory/Parallelism-theory/sem06/build/CMakeFiles/gpu_2.dir
+/home/a.smirnova/Parallelism-theory/Parallelism-theory/sem06/build/CMakeFiles/gpu_3.dir
+/home/a.smirnova/Parallelism-theory/Parallelism-theory/sem06/build/CMakeFiles/edit_cache.dir
+/home/a.smirnova/Parallelism-theory/Parallelism-theory/sem06/build/CMakeFiles/rebuild_cache.dir

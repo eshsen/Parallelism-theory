@@ -9,3 +9,5 @@ build
 !*.md
 !*.gitignore
 !*.py
+!sem06/build/
+!sem06/build/**

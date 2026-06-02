@@ -50,11 +50,13 @@
 |  gpu3  |     1.9973 s      |9.999653e-07|     339600/1000000    |как gpu2, но с vector_length(128)                                       |
 
 ### Скриншоты из Nsight Systems
-gpu_base
-<img width="831" height="338" alt="image" src="https://github.com/user-attachments/assets/242dd0d8-8020-438e-afde-e155ba43bf8f" />
+gpu_base  
+<img width="1433" height="406" alt="image" src="https://github.com/user-attachments/assets/ae7c7a20-3b1e-4a8f-8fc2-dd6bda398456" />
 
-gpu3
-<img width="909" height="356" alt="image" src="https://github.com/user-attachments/assets/d53b1a8e-799e-49ca-8bfe-ddb29456d90c" />
+
+gpu3  
+<img width="1434" height="403" alt="image" src="https://github.com/user-attachments/assets/e0e156fa-78f1-49bc-9efb-ef4a95420241" />
+
 
 ### Диаграмма оптимизации  
 <img width="900" height="560" alt="image" src="https://github.com/user-attachments/assets/3491107f-b7ac-4049-92c8-11cbf681a772" />
@@ -72,3 +74,4 @@ gpu3
 <img width="900" height="600" alt="image" src="https://github.com/user-attachments/assets/57ac559e-51ef-4779-8c7c-949d2b5f655f" />
 
 ## 4. Вывод
+Производительность ограничивают память и синхронизации, я уменьшила накладные расходы за счёт асинхронного запуска, ping‑pong‑буферов и редкой проверки ошибки, а лишними оказались копирование массива и слишком частая редукция невязки.

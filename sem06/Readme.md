@@ -50,6 +50,11 @@
 |  gpu3  |     1.9973 s      |9.999653e-07|     339600/1000000    |как gpu2, но с vector_length(128)                                       |
 
 ### Скриншоты из Nsight Systems
+gpu_base
+<img width="831" height="338" alt="image" src="https://github.com/user-attachments/assets/242dd0d8-8020-438e-afde-e155ba43bf8f" />
+
+gpu3
+<img width="909" height="356" alt="image" src="https://github.com/user-attachments/assets/d53b1a8e-799e-49ca-8bfe-ddb29456d90c" />
 
 ### Диаграмма оптимизации  
 <img width="900" height="560" alt="image" src="https://github.com/user-attachments/assets/3491107f-b7ac-4049-92c8-11cbf681a772" />
